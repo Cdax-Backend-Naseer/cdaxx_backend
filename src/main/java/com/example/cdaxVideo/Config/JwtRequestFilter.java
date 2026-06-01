@@ -64,109 +64,96 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getServletPath();
-        String method = request.getMethod();
-        
-        System.out.println("🔍 JWT Filter checking: " + method + " " + path);
-        
-        // ✅ Quick check: If it's a known public endpoint, skip immediately
-        if (publicEndpoints.contains(path.split("\\?")[0])) {
-            System.out.println("✅ Known public endpoint, skipping filter");
-            return true;
-        }
-        
-        // ✅ Use the full logic
-        if (isPublicEndpoint(path, method)) {
-            System.out.println("✅ Skipping JWT filter for public endpoint");
-            return true;
-        }
-        
-        System.out.println("🔐 Applying JWT filter (requires authentication)");
+        // Let ALL requests go through doFilterInternal
+        // We'll handle the public/protected logic there
         return false;
     }
     
-private boolean isPublicEndpoint(String path, String method) {
-    // Always skip OPTIONS (CORS preflight)
-    if ("OPTIONS".equalsIgnoreCase(method)) {
-        return true;
-    }
-    
-    // Remove query parameters for clean matching
-    String cleanPath = path.split("\\?")[0];
-    
-    System.out.println("   Clean path for matching: " + cleanPath);
-    
-    // List ALL public endpoints from SecurityConfig
-    boolean isPublic = false;
-    
-    // Public resources (startsWith checks)
-    if (cleanPath.startsWith("/api/public/") ||
-        cleanPath.startsWith("/api/debug/") ||
-        cleanPath.startsWith("/uploads/") ||
-        cleanPath.startsWith("/swagger-ui/") ||
-        cleanPath.startsWith("/v3/api-docs/") ||
-        cleanPath.startsWith("/webjars/") ||
-        cleanPath.startsWith("/swagger-resources/") ||
-        cleanPath.startsWith("/api/videos/public/") ||
-        cleanPath.startsWith("/api/test/")) {
-        
-        isPublic = true;
-    }
-    
-    // ⚠️ CRITICAL FIX: Exclude profile endpoints from being treated as public
-    if (cleanPath.startsWith("/api/auth/profile/")) {
-        System.out.println("   ⚠️ Profile endpoint detected - NOT public, requires authentication");
-        return false; // Profile endpoints are NOT public!
-    }
-    
-    // Specific AUTH endpoints that are public
-    if (cleanPath.startsWith("/api/auth/")) {
-        // Check if it's one of our known public auth endpoints
-        isPublic = publicEndpoints.contains(cleanPath);
-        System.out.println("   Is auth endpoint public: " + isPublic);
-    }
-    
-    // For GET requests specifically
-    if ("GET".equalsIgnoreCase(method)) {
-        // ✅ FIXED: Check exact matches first
-        if (cleanPath.equals("/api/courses") ||                    // Exact match
-            cleanPath.equals("/api/courses/tags/popular") ||
-            cleanPath.equals("/api/courses/search/suggestions") ||
-            cleanPath.equals("/api/courses/advanced-search") ||
-            
-            // ✅ FIXED: Check path patterns
-            cleanPath.startsWith("/api/courses/public") ||
-            cleanPath.matches("/api/courses/\\d+") ||              // /api/courses/{id}
-            cleanPath.startsWith("/api/courses/tag/") ||           // /api/courses/tag/{tagName}
-            
-            // Module endpoints
-            cleanPath.matches("/api/modules/\\d+") ||              // /api/modules/{id}
-            cleanPath.matches("/api/modules/course/\\d+") ||       // /api/modules/course/{courseId}
-            
-            // Videos and assessments under modules
-            cleanPath.matches("/api/modules/\\d+/videos") ||       // /api/modules/{moduleId}/videos
-            cleanPath.matches("/api/modules/\\d+/assessments") ||  // /api/modules/{moduleId}/assessments
-            
-            // Assessment endpoints
-            cleanPath.startsWith("/api/course/assessment/") ||
-            cleanPath.startsWith("/api/assessments/")) {
-            
-            isPublic = true;
+    private boolean isPublicEndpoint(String path, String method) {
+        // Always skip OPTIONS (CORS preflight)
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            return true;
         }
+        
+        // Remove query parameters for clean matching
+        String cleanPath = path.split("\\?")[0];
+        
+        System.out.println("   Checking if endpoint is public: " + cleanPath + " [" + method + "]");
+        
+        // ============ PUBLIC RESOURCES (always public) ============
+        if (cleanPath.startsWith("/api/public/") ||
+            cleanPath.startsWith("/api/debug/") ||
+            cleanPath.startsWith("/uploads/") ||
+            cleanPath.startsWith("/swagger-ui/") ||
+            cleanPath.startsWith("/v3/api-docs/") ||
+            cleanPath.startsWith("/webjars/") ||
+            cleanPath.startsWith("/swagger-resources/") ||
+            cleanPath.startsWith("/api/videos/public/") ||
+            cleanPath.startsWith("/api/test/")) {
+            
+            System.out.println("   ✅ Public resource match");
+            return true;
+        }
+        
+        // ============ PROTECTED PATHS - NEVER PUBLIC ============
+        // These should NEVER be treated as public, regardless of method
+        if (cleanPath.startsWith("/api/auth/profile/") ||
+            cleanPath.startsWith("/api/auth/change-password") ||
+            cleanPath.startsWith("/api/courses/subscribed/") ||
+            cleanPath.startsWith("/api/courses/user/") ||
+            cleanPath.startsWith("/api/purchase") ||
+            cleanPath.startsWith("/api/cart/") ||
+            cleanPath.startsWith("/api/favorites/") ||
+            cleanPath.startsWith("/api/dashboard/") ||
+            cleanPath.startsWith("/api/streak/") ||
+            cleanPath.startsWith("/api/profile/streak") ||
+            cleanPath.matches("/api/videos/\\d+/progress") ||
+            cleanPath.matches("/api/videos/\\d+/complete")) {
+            
+            System.out.println("   ❌ Protected endpoint - NOT public");
+            return false;  // These are NEVER public
+        }
+        
+        // ============ AUTHENTICATION ENDPOINTS (public) ============
+        if (cleanPath.startsWith("/api/auth/")) {
+            // Specific public auth endpoints
+            boolean isPublicAuth = publicEndpoints.contains(cleanPath);
+            System.out.println("   Auth endpoint, is public: " + isPublicAuth);
+            return isPublicAuth;
+        }
+        
+        // ============ GET endpoints that are public ============
+        if ("GET".equalsIgnoreCase(method)) {
+            // Exact match public GET endpoints
+            if (cleanPath.equals("/api/courses") ||
+                cleanPath.equals("/api/courses/tags/popular") ||
+                cleanPath.equals("/api/courses/search/suggestions") ||
+                cleanPath.equals("/api/courses/advanced-search") ||
+                
+                // Pattern matches for GET
+                cleanPath.matches("/api/courses/\\d+") ||              // /api/courses/{id}
+                cleanPath.startsWith("/api/courses/public") ||
+                cleanPath.startsWith("/api/courses/tag/") ||
+                
+                // Module endpoints - GET only
+                cleanPath.matches("/api/modules/\\d+") ||              // /api/modules/{id}
+                cleanPath.matches("/api/modules/course/\\d+") ||       // /api/modules/course/{courseId}
+                cleanPath.matches("/api/modules/\\d+/videos") ||       // /api/modules/{moduleId}/videos
+                cleanPath.matches("/api/modules/\\d+/assessments") ||  // /api/modules/{moduleId}/assessments
+                
+                // Assessment endpoints - GET only
+                cleanPath.startsWith("/api/course/assessment/") ||
+                cleanPath.startsWith("/api/assessments/")) {
+                
+                System.out.println("   ✅ Public GET endpoint");
+                return true;
+            }
+        }
+        
+        // ============ Everything else requires authentication ============
+        System.out.println("   🔒 Endpoint requires authentication");
+        return false;
     }
-    
-    // ✅ CRITICAL DEBUG: Print why a path might not be recognized as public
-    if (!isPublic && "GET".equalsIgnoreCase(method)) {
-        System.out.println("   ⚠️ Path not recognized as public. Details:");
-        System.out.println("      cleanPath: " + cleanPath);
-        System.out.println("      equals /api/courses: " + cleanPath.equals("/api/courses"));
-        System.out.println("      matches courses pattern: " + cleanPath.matches("/api/courses/\\d+"));
-        System.out.println("      startsWith courses/public: " + cleanPath.startsWith("/api/courses/public"));
-    }
-    
-    System.out.println("   Final isPublic: " + isPublic);
-    return isPublic;
-}
     
     @Override
     protected void doFilterInternal(HttpServletRequest request, 
@@ -175,27 +162,40 @@ private boolean isPublicEndpoint(String path, String method) {
             throws ServletException, IOException {
         
         String requestPath = request.getRequestURI();
-        System.out.println("🔐 JWT Filter processing path: " + requestPath + 
-                         " with query: " + request.getQueryString());
+        String method = request.getMethod();
         
+        System.out.println("🔐 JWT Filter processing: " + method + " " + requestPath);
+        
+        // First, check if this is a public endpoint
+        if (isPublicEndpoint(requestPath, method)) {
+            System.out.println("✅ Public endpoint - continuing without authentication");
+            chain.doFilter(request, response);
+            return;
+        }
+        
+        // For protected endpoints, require authentication
         final String requestTokenHeader = request.getHeader("Authorization");
         
-        String username = null;
-        String jwtToken = null;
+        if (requestTokenHeader == null || !requestTokenHeader.startsWith("Bearer ")) {
+            System.out.println("❌ No Bearer token for protected endpoint: " + requestPath);
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Full authentication is required to access this resource\",\"status\":401}");
+            return;
+        }
         
-        // Extract JWT token from Authorization header
-        if (requestTokenHeader != null && requestTokenHeader.startsWith("Bearer ")) {
-            jwtToken = requestTokenHeader.substring(7);
-            
-            try {
-                username = jwtTokenUtil.getUsernameFromToken(jwtToken);
-                System.out.println("Extracted Username: " + username);
-            } catch (Exception e) {
-                System.out.println("Error extracting username: " + e.getMessage());
-            }
-        } else {
-            System.out.println("⚠️ No Authorization header or not Bearer token");
-            // Don't print all headers in production for security
+        String jwtToken = requestTokenHeader.substring(7);
+        String username = null;
+        
+        try {
+            username = jwtTokenUtil.getUsernameFromToken(jwtToken);
+            System.out.println("Extracted Username: " + username);
+        } catch (Exception e) {
+            System.out.println("Error extracting username: " + e.getMessage());
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Invalid token\",\"status\":401}");
+            return;
         }
         
         // Validate token and set authentication
@@ -220,17 +220,22 @@ private boolean isPublicEndpoint(String path, String method) {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 } else {
                     System.out.println("❌ Token validation failed for: " + username);
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json");
+                    response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Token validation failed\",\"status\":401}");
+                    return;
                 }
             } catch (Exception e) {
                 System.out.println("Error setting authentication: " + e.getMessage());
                 e.printStackTrace();
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Authentication error\",\"status\":401}");
+                return;
             }
-        } else if (!isPublicEndpoint(requestPath, request.getMethod())) {
-            // If this is not a public endpoint and no username was extracted
-            System.out.println("❌ No valid token found for protected endpoint");
-            // Note: Spring Security will handle the actual 401 response
         }
         
+        // Continue the filter chain
         chain.doFilter(request, response);
     }
-}
+}                                        

@@ -821,9 +821,10 @@ public ResponseEntity<?> canAttemptAssessment(
         @PostMapping("/purchase")
         public ResponseEntity<Map<String, Object>> purchaseCourse(
                 @RequestParam Long userId,
-                @RequestParam Long courseId) {
+                @RequestParam Long courseId,
+                @RequestParam(required = false, defaultValue = "1") Integer totalMonths) {
             Map<String, Object> resp = new HashMap<>();
-            resp.put("message", courseService.purchaseCourse(userId, courseId));
+            resp.put("message", courseService.purchaseCourse(userId, courseId, totalMonths));
             return ResponseEntity.ok(resp);
         }
         

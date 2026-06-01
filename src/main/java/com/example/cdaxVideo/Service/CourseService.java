@@ -5,6 +5,7 @@ import com.example.cdaxVideo.Entity.*;
 import com.example.cdaxVideo.Entity.Module;
 import com.example.cdaxVideo.Repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.broker.SubscriptionRegistry;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
@@ -20,6 +21,7 @@ public class CourseService {
     private static final Logger logger = LoggerFactory.getLogger(VideoService.class);
 
     @Autowired private CourseRepository courseRepository;
+    @Autowired private SubscriptionService subscriptionService;
     @Autowired private ModuleRepository moduleRepository;
     @Autowired private VideoRepository videoRepository;
     @Autowired private AssessmentRepository assessmentRepository;
@@ -957,7 +959,7 @@ public Map<String, Object> getAssessmentWithQuestions(Long userId, Long assessme
      * - unlock first 3 videos of first module (or less if module shorter)
      */
 @Transactional
-public String purchaseCourse(Long userId, Long courseId) {
+public String purchaseCourse(Long userId, Long courseId, Integer totalMonths) {
     boolean alreadyExists = purchaseRepository.existsByUserIdAndCourseId(userId, courseId);
     if (alreadyExists) {
         return "Already purchased";
@@ -966,25 +968,27 @@ public String purchaseCourse(Long userId, Long courseId) {
     User user = userRepository.findById(userId).orElseThrow();
     Course course = courseRepository.findById(courseId).orElseThrow();
 
+    // Create purchase record
     UserCoursePurchase ucp = new UserCoursePurchase();
     ucp.setUser(user);
     ucp.setCourse(course);
-
     purchaseRepository.save(ucp);
 
-    // ✅ ADD THIS: Mark user as NOT new after purchase
+    // ✅ CREATE SUBSCRIPTION WITH TOTAL MONTHS
+    subscriptionService.createSubscription(userId, courseId, totalMonths);
+
+    // Mark user as NOT new after purchase
     if (user.getIsNewUser() != null && user.getIsNewUser() == 1) {
-        user.setIsNewUser(0); // Set to 0 (false)
+        user.setIsNewUser(0);
         userRepository.save(user);
         logger.info("✅ User {} marked as NOT new after purchasing course: {}", user.getId(), course.getTitle());
     }
 
-    // --- Unlock first module and first 3 videos for the user ---
+    // Unlock first module and first 3 videos
     List<Module> modules = moduleRepository.findByCourseId(courseId);
     if (!modules.isEmpty()) {
         Module firstModule = modules.get(0);
 
-        // create or update module progress (unlocked)
         UserModuleProgress ump = userModuleProgressRepository.findByUserAndModule(user, firstModule)
                 .orElseGet(() -> {
                     UserModuleProgress nm = new UserModuleProgress();
@@ -996,7 +1000,6 @@ public String purchaseCourse(Long userId, Long courseId) {
         ump.setUnlockedOn(new Date());
         userModuleProgressRepository.save(ump);
 
-        // unlock first 3 videos (or fewer if module has fewer videos)
         List<Video> videos = videoRepository.findByModuleId(firstModule.getId());
         int toUnlock = Math.min(3, videos.size());
         for (int i = 0; i < toUnlock; i++) {

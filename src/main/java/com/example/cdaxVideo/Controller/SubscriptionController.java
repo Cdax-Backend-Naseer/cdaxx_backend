@@ -20,13 +20,10 @@ public class SubscriptionController {
     private AuthService authService;
     
     @Autowired
-    private SubscriptionService subscriptionService; // We'll create this next
+    private SubscriptionService subscriptionService;
 
     // ==================== GET SUBSCRIPTION STATUS ====================
     
-    /**
-     * Get current user's subscription status
-     */
     @GetMapping("/status")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> getSubscriptionStatus() {
@@ -34,10 +31,7 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Get subscription details
             Map<String, Object> subscriptionDetails = subscriptionService.getSubscriptionDetails(userId);
             
             Map<String, Object> response = new HashMap<>();
@@ -55,9 +49,6 @@ public class SubscriptionController {
 
     // ==================== CHECK COURSE SUBSCRIPTION ====================
     
-    /**
-     * Check if user has active subscription for a specific course
-     */
     @GetMapping("/check/{courseId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> checkCourseSubscription(@PathVariable Long courseId) {
@@ -65,10 +56,7 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Check subscription
             boolean hasSubscription = subscriptionService.hasActiveSubscription(userId, courseId);
             
             Map<String, Object> response = new HashMap<>();
@@ -76,6 +64,12 @@ public class SubscriptionController {
             response.put("hasSubscription", hasSubscription);
             response.put("courseId", courseId);
             response.put("userId", userId);
+            
+            // Also return end date if subscription exists
+            if (hasSubscription) {
+                java.time.LocalDateTime endDate = subscriptionService.getSubscriptionEndDate(userId, courseId);
+                response.put("subscriptionEndDate", endDate);
+            }
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -88,9 +82,6 @@ public class SubscriptionController {
 
     // ==================== CREATE SUBSCRIPTION ====================
     
-    /**
-     * Create a new subscription for a course
-     */
     @PostMapping("/create")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> createSubscription(
@@ -99,17 +90,16 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Extract request data
             Long courseId = Long.valueOf(request.get("courseId").toString());
-            String subscriptionType = (String) request.get("subscriptionType"); // "MONTHLY", "YEARLY", "LIFETIME"
-            Integer durationMonths = (Integer) request.get("durationMonths"); // Optional
+            Integer totalMonths = (Integer) request.get("totalMonths");
             
-            // Create subscription
-            Map<String, Object> result = subscriptionService.createSubscription(
-                    userId, courseId, subscriptionType, durationMonths);
+            // Validate totalMonths
+            if (totalMonths == null || totalMonths <= 0) {
+                totalMonths = 1; // Default to 1 month
+            }
+            
+            Map<String, Object> result = subscriptionService.createSubscription(userId, courseId, totalMonths);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -127,9 +117,6 @@ public class SubscriptionController {
 
     // ==================== CANCEL SUBSCRIPTION ====================
     
-    /**
-     * Cancel an active subscription
-     */
     @PostMapping("/cancel/{subscriptionId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> cancelSubscription(@PathVariable Long subscriptionId) {
@@ -137,10 +124,7 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Cancel subscription
             Map<String, Object> result = subscriptionService.cancelSubscription(userId, subscriptionId);
             
             Map<String, Object> response = new HashMap<>();
@@ -159,9 +143,6 @@ public class SubscriptionController {
 
     // ==================== GET ALL USER SUBSCRIPTIONS ====================
     
-    /**
-     * Get all subscriptions for current user (active + inactive)
-     */
     @GetMapping("/all")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> getAllSubscriptions() {
@@ -169,10 +150,7 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Get all subscriptions
             Map<String, Object> result = subscriptionService.getAllUserSubscriptions(userId);
             
             Map<String, Object> response = new HashMap<>();
@@ -190,9 +168,6 @@ public class SubscriptionController {
 
     // ==================== RENEW SUBSCRIPTION ====================
     
-    /**
-     * Renew an expiring subscription
-     */
     @PostMapping("/renew/{subscriptionId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> renewSubscription(
@@ -202,16 +177,14 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
+            Integer totalMonths = (Integer) request.get("totalMonths");
             
-            // Extract request data
-            String subscriptionType = (String) request.get("subscriptionType");
-            Integer durationMonths = (Integer) request.get("durationMonths");
+            if (totalMonths == null || totalMonths <= 0) {
+                totalMonths = 1;
+            }
             
-            // Renew subscription
-            Map<String, Object> result = subscriptionService.renewSubscription(
-                    userId, subscriptionId, subscriptionType, durationMonths);
+            Map<String, Object> result = subscriptionService.renewSubscription(userId, subscriptionId, totalMonths);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
@@ -229,9 +202,6 @@ public class SubscriptionController {
 
     // ==================== GET SUBSCRIPTION HISTORY ====================
     
-    /**
-     * Get subscription history for a course
-     */
     @GetMapping("/history/{courseId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> getSubscriptionHistory(@PathVariable Long courseId) {
@@ -239,10 +209,7 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Get subscription history
             Map<String, Object> result = subscriptionService.getSubscriptionHistory(userId, courseId);
             
             Map<String, Object> response = new HashMap<>();
@@ -260,9 +227,6 @@ public class SubscriptionController {
 
     // ==================== CHECK SUBSCRIPTION VALIDITY ====================
     
-    /**
-     * Check if subscription is still valid (not expired)
-     */
     @GetMapping("/validate/{subscriptionId}")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Map<String, Object>> validateSubscription(@PathVariable Long subscriptionId) {
@@ -270,15 +234,66 @@ public class SubscriptionController {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             String email = authentication.getName();
             
-            // Get user ID from email
             Long userId = authService.getUserByEmail(email).getId();
-            
-            // Validate subscription
             Map<String, Object> result = subscriptionService.validateSubscription(userId, subscriptionId);
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("validation", result);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+
+    // ==================== DOWNLOAD INFO ====================
+    
+    @GetMapping("/download-info/{courseId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, Object>> getDownloadInfo(@PathVariable Long courseId) {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            String email = authentication.getName();
+            
+            Long userId = authService.getUserByEmail(email).getId();
+            Map<String, Object> downloadInfo = subscriptionService.getDownloadInfo(userId, courseId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("downloadInfo", downloadInfo);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(500).body(response);
+        }
+    }
+    
+    @GetMapping("/can-download/{courseId}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, Object>> canDownload(@PathVariable Long courseId) {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            String email = authentication.getName();
+            
+            Long userId = authService.getUserByEmail(email).getId();
+            boolean canDownload = subscriptionService.isDownloadAllowed(userId, courseId);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("canDownload", canDownload);
+            response.put("courseId", courseId);
+            
+            if (canDownload) {
+                java.time.LocalDateTime endDate = subscriptionService.getSubscriptionEndDate(userId, courseId);
+                response.put("subscriptionEndDate", endDate);
+            }
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {

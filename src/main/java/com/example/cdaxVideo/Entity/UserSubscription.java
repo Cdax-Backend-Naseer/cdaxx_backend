@@ -1,6 +1,5 @@
 package com.example.cdaxVideo.Entity;
 
-
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -23,8 +22,8 @@ public class UserSubscription {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = false;
     
-    @Column(name = "subscription_type")
-    private String subscriptionType; // "MONTHLY", "YEARLY", "LIFETIME"
+    @Column(name = "total_months")
+    private Integer totalMonths; // Changed from subscriptionType to total months
     
     @Column(name = "start_date")
     private LocalDateTime startDate;
@@ -38,15 +37,20 @@ public class UserSubscription {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
     
-    // Constructors
     public UserSubscription() {}
     
-    public UserSubscription(User user, Course course, String subscriptionType) {
+    public UserSubscription(User user, Course course, Integer totalMonths) {
         this.user = user;
         this.course = course;
-        this.subscriptionType = subscriptionType;
+        this.totalMonths = totalMonths;
         this.startDate = LocalDateTime.now();
+        this.expiryDate = calculateExpiryDate(totalMonths);
         this.isActive = true;
+    }
+    
+    private LocalDateTime calculateExpiryDate(Integer months) {
+        if (months == null) return LocalDateTime.now().plusMonths(1);
+        return LocalDateTime.now().plusMonths(months);
     }
     
     // Getters and Setters
@@ -65,9 +69,9 @@ public class UserSubscription {
         this.updatedAt = LocalDateTime.now();
     }
     
-    public String getSubscriptionType() { return subscriptionType; }
-    public void setSubscriptionType(String subscriptionType) { 
-        this.subscriptionType = subscriptionType; 
+    public Integer getTotalMonths() { return totalMonths; }
+    public void setTotalMonths(Integer totalMonths) { 
+        this.totalMonths = totalMonths; 
         this.updatedAt = LocalDateTime.now();
     }
     
@@ -89,7 +93,6 @@ public class UserSubscription {
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
     
-    // Helper methods
     public boolean isExpired() {
         if (expiryDate == null) return false;
         return LocalDateTime.now().isAfter(expiryDate);
@@ -97,6 +100,11 @@ public class UserSubscription {
     
     public boolean isValid() {
         return Boolean.TRUE.equals(isActive) && !isExpired();
+    }
+    
+    public long getDaysRemaining() {
+        if (expiryDate == null || !isValid()) return 0;
+        return java.time.temporal.ChronoUnit.DAYS.between(LocalDateTime.now(), expiryDate);
     }
     
     @PreUpdate

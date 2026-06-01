@@ -131,6 +131,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/modules").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/modules/{moduleId}/unlock-assessment").authenticated()
                 .requestMatchers(HttpMethod.POST, "/api/modules/{moduleId}/unlock-next").authenticated()
+                .requestMatchers(HttpMethod.POST,"/api/purchase").authenticated()
                 
                 // User profile endpoints
                 .requestMatchers("/api/auth/profile/**").authenticated()
